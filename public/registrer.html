@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kontact - S'inscrire</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-dark: #0D47A1;
+      --primary-light: #4DA3FF;
+      --bg-main: #F7FBFF;
+      --bg-card: #FFFFFF;
+      --bg-hover: #F3F4F6;
+      --text-primary: #1F2937;
+      --text-secondary: #6B7280;
+      --text-muted: #9CA3AF;
+      --error: #EF4444;
+      --border-light: #E5E7EB;
+      --radius: 12px;
+      --shadow-lg: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; background: var(--bg-main); }
+
+    .left {
+      width: 45%;
+      background: linear-gradient(135deg, var(--primary-dark), var(--primary-light));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      padding: 40px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+    .logo { font-size: 28px; font-weight: 800; margin-bottom: 24px; }
+    .left h2 { font-size: 28px; font-weight: 700; text-align: center; line-height: 1.4; }
+
+    .right {
+      width: 55%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+    .form-box {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      padding: 40px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: var(--shadow-lg);
+    }
+    .form-box h1 { font-size: 24px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+    .form-box p { color: var(--text-secondary); font-size: 14px; margin-bottom: 28px; }
+
+    label { display: block; font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 6px; }
+
+    input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 2px solid var(--border-light);
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus {
+      border-color: var(--primary-light);
+      box-shadow: 0 0 0 3px rgba(77,163,255,0.15);
+    }
+    input::placeholder { color: var(--text-muted); }
+
+    .btn-primary {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary-light);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #3B8FEF; }
+
+    .login { text-align: center; margin-top: 20px; font-size: 14px; color: var(--text-secondary); }
+    .login a { color: var(--primary-light); font-weight: 600; text-decoration: none; }
+
+    @media (max-width: 640px) {
+      .left { display: none; }
+      .right { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="left">
+    <div class="logo"> Kontact</div>
+    <h2>Connectez-vous avec vos amis et le monde autour de vous</h2>
+    <div style="width: 85%; height: 320px;backGround:rgba(255,255,255,0.2); border-radius: 24px; margin-top: 30px; border: 2px solid rgba(255,255,255,0.3);"></div>
+  </div>
+
+  <div class="right">
+    <div class="form-box">
+      <h1>Créer un compte</h1>
+      <p>Rejoignez la communauté Kontact dès aujourd'hui</p>
+
+      <form action="/auth/register" method="POST">
+        <label>Nom complet</label>
+        <input type="text" name="fullname" placeholder="Jean Dupont" required>
+
+        <label>Nom d'utilisateur</label>
+        <input type="text" name="username" placeholder="@username" required>
+
+        <label>Email</label>
+        <input type="email" name="email" placeholder="email@example.com" required>
+
+        <label>Mot de passe</label>
+        <input type="password" name="password" placeholder="••••••••" required>
+
+        <label>Confirmer mot de passe</label>
+        <input type="password" name="confirm_password" placeholder="••••••••" required>
+
+        <button type="submit" class="btn-primary">S'inscrire</button>
+      </form>
+
+      <div class="login">Déjà un compte ? <a href="/public/login.html">Se connecter</a></div>
+    </div>
+  </div>
+</body>
+</html>
