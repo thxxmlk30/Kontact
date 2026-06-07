@@ -1,11 +1,13 @@
 const express = require('express');
-const router  = express.Router();
-const friend  = require('../controllers/friendController');
+const router = express.Router();
+const friend = require('../controllers/friendController');
 const { isAuthenticated } = require('../middleware/authMiddleware');
 
-router.post('/friends/request/:id', isAuthenticated, friend.sendRequest);
-router.post('/friends/respond/:id', isAuthenticated, friend.respond);
-router.get('/friends',              isAuthenticated, friend.getList);
-router.get('/friends/requests',     isAuthenticated, friend.getRequests);
+router.get('/', isAuthenticated, friend.getList);
+router.get('/requests', isAuthenticated, friend.getRequests);
+router.get('/suggestions', isAuthenticated, friend.getSuggestions);
+router.post('/request/:id', isAuthenticated, friend.sendRequest);
+router.post('/respond/:id', isAuthenticated, friend.respond);
+router.delete('/:id', isAuthenticated, friend.remove);
 
 module.exports = router;

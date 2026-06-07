@@ -1,13 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const like = require('../controllers/likeController');
+const { isAuthenticated } = require('../middleware/authMiddleware');
 
-const likeController = require('../controllers/likeController');
-const authMiddleware = require('../middleware/authMiddleware');
-
-// Liker / enlever le like d’un post
-router.post('/', authMiddleware.isLoggedIn, likeController.toggleLike);
-
-// Compter les likes d’un post
-router.get('/post/:postId/count', authMiddleware.isLoggedIn, likeController.getLikeCount);
+router.post('/', isAuthenticated, like.toggleLike);
+router.get('/post/:postId/count', isAuthenticated, like.getLikeCount);
 
 module.exports = router;

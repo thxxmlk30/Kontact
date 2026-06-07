@@ -32,13 +32,15 @@ class Message {
 
   static async getConversations(user_id) {
     const [rows] = await db.execute(`
-      SELECT c.*, u.fullname, u.username, u.avatar,
-        (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message
+      SELECT c.*, u.id AS other_user_id, u.fullname, u.username, u.avatar,
+        (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
+        (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message_at,
+        (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND sender_id != ? AND is_read = 0) AS unread_count
       FROM conversations c
       JOIN users u ON u.id = CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END
       WHERE c.user1_id = ? OR c.user2_id = ?
-      ORDER BY c.created_at DESC
-    `, [user_id, user_id, user_id]);
+      ORDER BY COALESCE(last_message_at, c.created_at) DESC
+    `, [user_id, user_id, user_id, user_id]);
     return rows;
   }
 

@@ -1,1193 +1,472 @@
-// Main App
-class App {
-  constructor() {
-    this.currentUser = null;
-    this.socket = io();
-    this.page = 'login';
-    this.init();
-  }
-
-  async init() {
-    this.setupSocketEvents();
-    
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const user = await api.getProfile();
-        this.currentUser = user;
-        localStorage.setItem('user', JSON.stringify(user));
-        this.socket.emit('user-online', user.id);
-        this.renderApp();
-      } catch (error) {
-        this.renderLoginPage();
-      }
-    } else {
-      this.renderLoginPage();
-    }
-  }
-
-  setupSocketEvents() {
-    this.socket.on('user-status', (data) => {
-      this.updateUserStatus(data.userId, data.status);
+const api = {
+  async request(path, options = {}) {
+    const headers = options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' };
+    const res = await fetch(`/api${path}`, {
+      credentials: 'same-origin',
+      ...options,
+      headers: { ...headers, ...(options.headers || {}) }
     });
-
-    this.socket.on('receive-message', (data) => {
-      this.handleNewMessage(data);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Erreur reseau');
+    return data;
+  },
+  get(path) { return this.request(path); },
+  post(path, body) {
+    return this.request(path, {
+      method: 'POST',
+      body: body instanceof FormData ? body : JSON.stringify(body || {})
     });
-
-    this.socket.on('user-typing', (data) => {
-      this.showTypingIndicator(data);
+  },
+  put(path, body) {
+    return this.request(path, {
+      method: 'PUT',
+      body: body instanceof FormData ? body : JSON.stringify(body || {})
     });
-
-    this.socket.on('user-stop-typing', (data) => {
-      this.hideTypingIndicator(data.senderId);
-    });
-  }
-
-  // ============ LOGIN PAGE ============
-  renderLoginPage() {
-    this.page = 'login';
-    const root = document.getElementById('root');
-    root.innerHTML = `
-      <div class="login-container" style="
-        min-height: 100vh;
-        background: linear-gradient(135deg, #0D47A1, #4DA3FF);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-      ">
-        <div class="login-box" style="
-          background: white;
-          border-radius: 12px;
-          padding: 40px;
-          max-width: 400px;
-          width: 100%;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        ">
-          <h1 style="
-            text-align: center;
-            margin-bottom: 30px;
-            color: #0D47A1;
-            font-size: 32px;
-          ">
-            <i class="fas fa-paper-plane"></i> Kontact
-          </h1>
-
-          <div id="login-tab" class="tab-content">
-            <div class="form-group">
-              <label>Email</label>
-              <input type="email" id="login-email" placeholder="votre@email.com" />
-            </div>
-            <div class="form-group">
-              <label>Mot de passe</label>
-              <input type="password" id="login-password" placeholder="••••••••" />
-            </div>
-            <button class="btn btn-primary" style="width: 100%;" onclick="app.handleLogin()">
-              Se connecter
-            </button>
-            <p style="text-align: center; margin-top: 20px; color: #6B7280;">
-              Pas encore de compte ? 
-              <a href="#" onclick="app.switchToRegister(); return false;">S'inscrire</a>
-            </p>
-          </div>
-
-          <div id="register-tab" class="tab-content hidden">
-            <div class="form-group">
-              <label>Nom complet</label>
-              <input type="text" id="register-name" placeholder="Jean Dupont" />
-            </div>
-            <div class="form-group">
-              <label>Email</label>
-              <input type="email" id="register-email" placeholder="votre@email.com" />
-            </div>
-            <div class="form-group">
-              <label>Mot de passe</label>
-              <input type="password" id="register-password" placeholder="••••••••" />
-            </div>
-            <div class="form-group">
-              <label>Confirmer mot de passe</label>
-              <input type="password" id="register-confirm" placeholder="••••••••" />
-            </div>
-            <button class="btn btn-primary" style="width: 100%;" onclick="app.handleRegister()">
-              S'inscrire
-            </button>
-            <p style="text-align: center; margin-top: 20px; color: #6B7280;">
-              Vous avez un compte ? 
-              <a href="#" onclick="app.switchToLogin(); return false;">Se connecter</a>
-            </p>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  switchToRegister() {
-    document.getElementById('login-tab').classList.add('hidden');
-    document.getElementById('register-tab').classList.remove('hidden');
-  }
-
-  switchToLogin() {
-    document.getElementById('register-tab').classList.add('hidden');
-    document.getElementById('login-tab').classList.remove('hidden');
-  }
-
-  async handleLogin() {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-
-    if (!email || !password) {
-      showToast('Remplissez tous les champs', 'error');
-      return;
-    }
-
-    try {
-      showSpinner(true);
-      const res = await api.login(email, password);
-      this.currentUser = res.user;
-      localStorage.setItem('user', JSON.stringify(res.user));
-      this.socket.emit('user-online', res.user.id);
-      showSpinner(false);
-      showToast('Connexion réussie!', 'success');
-      this.renderApp();
-    } catch (error) {
-      showSpinner(false);
-      showToast(error.message, 'error');
-    }
-  }
-
-  async handleRegister() {
-    const name = document.getElementById('register-name').value;
-    const email = document.getElementById('register-email').value;
-    const password = document.getElementById('register-password').value;
-    const confirm = document.getElementById('register-confirm').value;
-
-    if (!name || !email || !password || !confirm) {
-      showToast('Remplissez tous les champs', 'error');
-      return;
-    }
-
-    if (password !== confirm) {
-      showToast('Les mots de passe ne correspondent pas', 'error');
-      return;
-    }
-
-    if (password.length < 6) {
-      showToast('Le mot de passe doit contenir au moins 6 caractères', 'error');
-      return;
-    }
-
-    try {
-      showSpinner(true);
-      const res = await api.register({ name, email, password });
-      this.currentUser = res.user;
-      localStorage.setItem('user', JSON.stringify(res.user));
-      this.socket.emit('user-online', res.user.id);
-      showSpinner(false);
-      showToast('Compte créé avec succès!', 'success');
-      this.renderApp();
-    } catch (error) {
-      showSpinner(false);
-      showToast(error.message, 'error');
-    }
-  }
-
-  // ============ MAIN APP ============
-  renderApp() {
-    const root = document.getElementById('root');
-    root.innerHTML = `
-      <nav>
-        <div class="nav-content">
-          <a class="nav-brand" href="#" onclick="app.goToFeed(); return false;">
-            <i class="fas fa-paper-plane"></i> Kontact
-          </a>
-          <ul class="nav-menu">
-            <li class="nav-item">
-              <button class="nav-link" onclick="app.goToFeed()">
-                <i class="fas fa-home"></i> Accueil
-              </button>
-            </li>
-            <li class="nav-item">
-              <button class="nav-link" onclick="app.goToMessages()">
-                <i class="fas fa-comments"></i> Messages
-                <span id="message-badge" class="badge-notification hidden">0</span>
-              </button>
-            </li>
-            <li class="nav-item">
-              <button class="nav-link" onclick="app.goToNotifications()">
-                <i class="fas fa-bell"></i> Notifications
-                <span id="notif-badge" class="badge-notification hidden">0</span>
-              </button>
-            </li>
-            <li class="nav-item">
-              <button class="nav-link" onclick="app.goToProfile()">
-                <i class="fas fa-user"></i> Profil
-              </button>
-            </li>
-            <li class="nav-item">
-              <button class="nav-link" onclick="app.logout()">
-                <i class="fas fa-sign-out-alt"></i> Déconnexion
-              </button>
-            </li>
-          </ul>
-        </div>
-      </nav>
-
-      <div class="main-layout">
-        <div class="sidebar">
-          ${this.renderSidebar()}
-        </div>
-        <div class="main-content">
-          <div id="page-container"></div>
-        </div>
-      </div>
-    `;
-
-    this.goToFeed();
-  }
-
-  renderSidebar() {
-    return `
-      <div class="sidebar-item active" onclick="app.goToFeed()">
-        <i class="fas fa-home" style="color: #4DA3FF;"></i>
-        <span>Accueil</span>
-      </div>
-      <div class="sidebar-item" onclick="app.goToFriends()">
-        <i class="fas fa-users"></i>
-        <span>Amis</span>
-      </div>
-      <div class="sidebar-item" onclick="app.goToMessages()">
-        <i class="fas fa-comments"></i>
-        <span>Messages</span>
-      </div>
-      <div class="sidebar-item" onclick="app.goToNotifications()">
-        <i class="fas fa-bell"></i>
-        <span>Notifications</span>
-      </div>
-      <div class="sidebar-item" onclick="app.goToProfile()">
-        <i class="fas fa-user"></i>
-        <span>Profil</span>
-      </div>
-      <div class="sidebar-item" onclick="app.goToSettings()">
-        <i class="fas fa-cog"></i>
-        <span>Paramètres</span>
-      </div>
-      ${this.currentUser?.role === 'admin' ? `
-        <div class="sidebar-item" onclick="app.goToAdmin()">
-          <i class="fas fa-shield-alt"></i>
-          <span>Admin</span>
-        </div>
-      ` : ''}
-    `;
-  }
-
-  // ============ FEED PAGE ============
-  async goToFeed() {
-    this.page = 'feed';
-    this.updateSidebar();
-    const container = document.getElementById('page-container');
-    
-    container.innerHTML = `
-      <div class="page-content">
-        <div class="card" style="margin-bottom: 30px;">
-          <div style="display: flex; gap: 15px; align-items: flex-start;">
-            <div class="avatar avatar-lg">
-              ${this.currentUser.avatar ? `<img src="${this.currentUser.avatar}" />` : getInitials(this.currentUser.name)}
-            </div>
-            <div style="flex: 1;">
-              <textarea id="post-content" placeholder="À quoi pensez-vous ?" style="
-                margin-bottom: 15px;
-                border-radius: 12px;
-                min-height: 80px;
-              "></textarea>
-              <div style="display: flex; gap: 10px;">
-                <button class="btn btn-ghost" style="flex: 1; justify-content: center;">
-                  <i class="fas fa-image"></i> Photo
-                </button>
-                <button class="btn btn-ghost" style="flex: 1; justify-content: center;">
-                  <i class="fas fa-smile"></i> Émotion
-                </button>
-                <button class="btn btn-primary" style="flex: 1;" onclick="app.createPost()">
-                  <i class="fas fa-paper-plane"></i> Publier
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div id="feed-posts" style="display: flex; flex-direction: column; gap: 20px;">
-          <div style="text-align: center; padding: 40px; color: #9CA3AF;">
-            <i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i>
-            <p style="margin-top: 15px;">Chargement des publications...</p>
-          </div>
-        </div>
-      </div>
-    `;
-
-    await this.loadFeedPosts();
-  }
-
-  async loadFeedPosts() {
-    try {
-      const posts = await api.getPosts();
-      const container = document.getElementById('feed-posts');
-      
-      if (!posts || posts.length === 0) {
-        container.innerHTML = `
-          <div style="text-align: center; padding: 40px; color: #9CA3AF;">
-            <i class="fas fa-inbox" style="font-size: 48px;"></i>
-            <p style="margin-top: 15px;">Aucune publication pour le moment</p>
-          </div>
-        `;
-        return;
-      }
-
-      container.innerHTML = posts.map(post => this.renderPostCard(post)).join('');
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  renderPostCard(post) {
-    return `
-      <div class="post">
-        <div class="post-header">
-          <div class="post-author">
-            <div class="avatar">
-              ${post.author.avatar ? `<img src="${post.author.avatar}" />` : getInitials(post.author.name)}
-            </div>
-            <div>
-              <h3 style="margin: 0;">${post.author.name}</h3>
-              <p style="margin: 0; font-size: 13px; color: #9CA3AF;">${formatDate(post.createdAt)}</p>
-            </div>
-          </div>
-          ${this.currentUser.id === post.author.id ? `
-            <button class="btn btn-ghost btn-sm" onclick="app.showPostMenu('${post.id}')">
-              <i class="fas fa-ellipsis-v"></i>
-            </button>
-          ` : ''}
-        </div>
-
-        <div class="post-content">
-          ${post.content}
-        </div>
-
-        ${post.image ? `<img src="${post.image}" class="post-image" />` : ''}
-
-        <div class="post-actions">
-          <button class="action-btn" onclick="app.toggleLike('${post.id}')">
-            <i class="fas fa-heart"></i>
-            <span>${post.likes || 0}</span>
-          </button>
-          <button class="action-btn" onclick="app.showComments('${post.id}')">
-            <i class="fas fa-comment"></i>
-            <span>${post.comments || 0}</span>
-          </button>
-          <button class="action-btn" onclick="app.sharePost('${post.id}')">
-            <i class="fas fa-share"></i>
-          </button>
-        </div>
-
-        <div id="comments-${post.id}" style="margin-top: 15px; border-top: 1px solid #F3F4F6; padding-top: 15px; display: none;">
-          ${this.renderCommentsSection(post.id)}
-        </div>
-      </div>
-    `;
-  }
-
-  renderCommentsSection(postId) {
-    return `
-      <div id="comments-list-${postId}" style="margin-bottom: 15px;"></div>
-      <div style="display: flex; gap: 10px;">
-        <div class="avatar avatar-sm">
-          ${this.currentUser.avatar ? `<img src="${this.currentUser.avatar}" />` : getInitials(this.currentUser.name)}
-        </div>
-        <div style="flex: 1;">
-          <div style="display: flex; gap: 10px;">
-            <input type="text" id="comment-input-${postId}" placeholder="Ajouter un commentaire..." style="margin: 0;" />
-            <button class="btn btn-primary btn-sm" onclick="app.addComment('${postId}')">
-              <i class="fas fa-paper-plane"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  async createPost() {
-    const content = document.getElementById('post-content').value;
-    
-    if (!content.trim()) {
-      showToast('Écrivez quelque chose!', 'warning');
-      return;
-    }
-
-    try {
-      showSpinner(true);
-      await api.createPost({ content });
-      showSpinner(false);
-      showToast('Publication créée!', 'success');
-      document.getElementById('post-content').value = '';
-      this.loadFeedPosts();
-    } catch (error) {
-      showSpinner(false);
-      showToast(error.message, 'error');
-    }
-  }
-
-  async toggleLike(postId) {
-    try {
-      await api.likePost(postId);
-      this.loadFeedPosts();
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  async showComments(postId) {
-    const commentDiv = document.getElementById(`comments-${postId}`);
-    commentDiv.style.display = commentDiv.style.display === 'none' ? 'block' : 'none';
-    
-    if (commentDiv.style.display === 'block') {
-      try {
-        const comments = await api.getComments(postId);
-        const commentsList = document.getElementById(`comments-list-${postId}`);
-        commentsList.innerHTML = comments.map(comment => `
-          <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-            <div class="avatar avatar-sm">
-              ${comment.author.avatar ? `<img src="${comment.author.avatar}" />` : getInitials(comment.author.name)}
-            </div>
-            <div style="flex: 1;">
-              <div style="background: #F3F4F6; padding: 10px; border-radius: 8px;">
-                <p style="margin: 0; font-weight: 600; font-size: 13px;">${comment.author.name}</p>
-                <p style="margin: 5px 0 0 0;">${comment.content}</p>
-              </div>
-              <p style="margin: 5px 0 0 0; font-size: 12px; color: #9CA3AF;">${formatDate(comment.createdAt)}</p>
-            </div>
-          </div>
-        `).join('');
-      } catch (error) {
-        console.error(error);
-      }
-    }
-  }
-
-  async addComment(postId) {
-    const input = document.getElementById(`comment-input-${postId}`);
-    const content = input.value;
-
-    if (!content.trim()) return;
-
-    try {
-      await api.createComment({ postId, content });
-      input.value = '';
-      this.showComments(postId);
-      this.showComments(postId);
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  sharePost(postId) {
-    showToast('Partage en développement', 'info');
-  }
-
-  showPostMenu(postId) {
-    showModal('Options', `
-      <button class="btn btn-danger" style="width: 100%; margin-bottom: 10px;" onclick="app.deletePost('${postId}')">
-        <i class="fas fa-trash"></i> Supprimer
-      </button>
-      <button class="btn btn-secondary" style="width: 100%;" onclick="closeModal()">
-        Annuler
-      </button>
-    `);
-  }
-
-  async deletePost(postId) {
-    try {
-      await api.deletePost(postId);
-      closeModal();
-      showToast('Publication supprimée', 'success');
-      this.loadFeedPosts();
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  // ============ MESSAGES PAGE ============
-  async goToMessages() {
-    this.page = 'messages';
-    this.updateSidebar();
-    const container = document.getElementById('page-container');
-    
-    container.innerHTML = `
-      <div class="message-container">
-        <div class="message-list" id="message-list">
-          <div style="text-align: center; padding: 20px; color: #9CA3AF;">
-            <i class="fas fa-spinner fa-spin"></i> Chargement...
-          </div>
-        </div>
-        <div class="message-chat" id="message-chat">
-          <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #9CA3AF;">
-            <div style="text-align: center;">
-              <i class="fas fa-comments" style="font-size: 48px;"></i>
-              <p style="margin-top: 15px;">Sélectionnez une conversation</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    await this.loadConversations();
-  }
-
-  async loadConversations() {
-    try {
-      const conversations = await api.getConversations();
-      const list = document.getElementById('message-list');
-      
-      list.innerHTML = conversations.map(conv => `
-        <div class="message-item" onclick="app.openConversation('${conv.userId}', '${conv.userName}')">
-          <div class="avatar">
-            ${conv.avatar ? `<img src="${conv.avatar}" />` : getInitials(conv.userName)}
-          </div>
-          <div class="message-item-info">
-            <div class="message-item-name">${conv.userName}</div>
-            <div class="message-item-preview">${conv.lastMessage || 'Aucun message'}</div>
-          </div>
-        </div>
-      `).join('');
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async openConversation(userId, userName) {
-    try {
-      const messages = await api.openConversation(userId);
-      const chat = document.getElementById('message-chat');
-      
-      chat.innerHTML = `
-        <div class="message-header">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <h3 style="margin: 0;">${userName}</h3>
-            <span id="user-status-${userId}" class="badge badge-success" style="display: none;">
-              <i class="fas fa-circle" style="font-size: 8px;"></i> En ligne
-            </span>
-          </div>
-        </div>
-        <div class="message-body" id="message-body">
-          ${messages.map(msg => `
-            <div class="message-bubble ${msg.senderId === this.currentUser.id ? 'sent' : 'received'}">
-              <div class="message-text">${msg.content}</div>
-              <div class="message-time">${formatDate(msg.createdAt)}</div>
-            </div>
-          `).join('')}
-        </div>
-        <div class="message-input">
-          <input type="text" id="message-input" placeholder="Écrivez un message..." onkeypress="app.handleMessageKeypress(event, '${userId}')" />
-          <button class="btn btn-primary" onclick="app.sendMessage('${userId}')">
-            <i class="fas fa-paper-plane"></i>
-          </button>
-        </div>
-      `;
-
-      // Scroll to bottom
-      document.getElementById('message-body').scrollTop = document.getElementById('message-body').scrollHeight;
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async sendMessage(userId) {
-    const input = document.getElementById('message-input');
-    const content = input.value;
-
-    if (!content.trim()) return;
-
-    try {
-      await api.sendMessage({ receiverId: userId, content });
-      this.socket.emit('send-message', {
-        receiverId: userId,
-        content,
-        senderId: this.currentUser.id,
-        senderName: this.currentUser.name
-      });
-
-      input.value = '';
-      this.openConversation(userId, '');
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  handleMessageKeypress(event, userId) {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      this.sendMessage(userId);
-    }
-  }
-
-  // ============ NOTIFICATIONS PAGE ============
-  async goToNotifications() {
-    this.page = 'notifications';
-    this.updateSidebar();
-    const container = document.getElementById('page-container');
-    
-    container.innerHTML = `
-      <div class="page-content">
-        <h2 style="margin-bottom: 30px;">
-          <i class="fas fa-bell"></i> Notifications
-        </h2>
-        <div id="notifications-list" style="display: flex; flex-direction: column; gap: 15px;">
-          <div style="text-align: center; padding: 40px; color: #9CA3AF;">
-            <i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i>
-            <p style="margin-top: 15px;">Chargement...</p>
-          </div>
-        </div>
-      </div>
-    `;
-
-    await this.loadNotifications();
-  }
-
-  async loadNotifications() {
-    try {
-      const notifications = await api.getNotifications();
-      const list = document.getElementById('notifications-list');
-      
-      if (!notifications || notifications.length === 0) {
-        list.innerHTML = `
-          <div style="text-align: center; padding: 40px; color: #9CA3AF;">
-            <i class="fas fa-inbox" style="font-size: 48px;"></i>
-            <p style="margin-top: 15px;">Aucune notification</p>
-          </div>
-        `;
-        return;
-      }
-
-      list.innerHTML = notifications.map(notif => `
-        <div class="card" style="${notif.read ? 'background: #F3F4F6;' : 'border-left: 4px solid #4DA3FF;'}">
-          <div style="display: flex; justify-content: space-between; align-items: start;">
-            <div style="flex: 1;">
-              <p style="margin: 0; font-weight: 600;">${notif.title}</p>
-              <p style="margin: 5px 0 0 0; color: #6B7280;">${notif.message}</p>
-              <p style="margin: 10px 0 0 0; font-size: 12px; color: #9CA3AF;">${formatDate(notif.createdAt)}</p>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick="app.markNotificationRead('${notif.id}')">
-              <i class="fas fa-check"></i>
-            </button>
-          </div>
-        </div>
-      `).join('');
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async markNotificationRead(id) {
-    try {
-      await api.markNotificationRead(id);
-      this.loadNotifications();
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  // ============ PROFILE PAGE ============
-  async goToProfile() {
-    this.page = 'profile';
-    this.updateSidebar();
-    const container = document.getElementById('page-container');
-    
-    container.innerHTML = `
-      <div class="page-content">
-        <div class="card" style="margin-bottom: 30px; text-align: center;">
-          <div class="avatar avatar-lg" style="margin: 0 auto 20px auto;">
-            ${this.currentUser.avatar ? `<img src="${this.currentUser.avatar}" />` : getInitials(this.currentUser.name)}
-          </div>
-          <h2 style="margin-bottom: 5px;">${this.currentUser.name}</h2>
-          <p style="color: #6B7280; margin-bottom: 20px;">@${this.currentUser.email.split('@')[0]}</p>
-          <button class="btn btn-primary" onclick="app.goToEditProfile()">
-            <i class="fas fa-edit"></i> Modifier profil
-          </button>
-        </div>
-
-        <div class="card" style="margin-bottom: 30px;">
-          <h3 style="margin-bottom: 20px;">Informations</h3>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <div>
-              <p style="font-size: 13px; color: #9CA3AF; margin-bottom: 5px;">Email</p>
-              <p style="margin: 0; font-weight: 600;">${this.currentUser.email}</p>
-            </div>
-            <div>
-              <p style="font-size: 13px; color: #9CA3AF; margin-bottom: 5px;">Membre depuis</p>
-              <p style="margin: 0; font-weight: 600;">${formatDate(this.currentUser.createdAt)}</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 20px;">Mes publications</h3>
-          <div id="user-posts" style="display: flex; flex-direction: column; gap: 15px;">
-            <div style="text-align: center; padding: 20px; color: #9CA3AF;">
-              <i class="fas fa-spinner fa-spin"></i>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    await this.loadUserPosts();
-  }
-
-  async loadUserPosts() {
-    try {
-      const posts = await api.getPosts();
-      const userPosts = posts.filter(p => p.author.id === this.currentUser.id);
-      const container = document.getElementById('user-posts');
-      
-      if (!userPosts || userPosts.length === 0) {
-        container.innerHTML = `
-          <p style="text-align: center; color: #9CA3AF;">Aucune publication</p>
-        `;
-        return;
-      }
-
-      container.innerHTML = userPosts.map(post => `
-        <div style="padding: 15px; background: #F7FBFF; border-radius: 8px;">
-          <p style="margin: 0 0 10px 0;">${post.content}</p>
-          <div style="display: flex; gap: 10px; justify-content: flex-end;">
-            <button class="btn btn-secondary btn-sm" onclick="app.goToFeed()">
-              <i class="fas fa-eye"></i> Voir
-            </button>
-            <button class="btn btn-danger btn-sm" onclick="app.deletePost('${post.id}')">
-              <i class="fas fa-trash"></i>
-            </button>
-          </div>
-        </div>
-      `).join('');
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  goToEditProfile() {
-    const container = document.getElementById('page-container');
-    container.innerHTML = `
-      <div class="page-content">
-        <div class="card">
-          <h2 style="margin-bottom: 30px;">Modifier profil</h2>
-          <div class="form-group">
-            <label>Nom</label>
-            <input type="text" id="edit-name" value="${this.currentUser.name}" />
-          </div>
-          <div class="form-group">
-            <label>Email</label>
-            <input type="email" id="edit-email" value="${this.currentUser.email}" disabled />
-          </div>
-          <div class="form-group">
-            <label>Bio</label>
-            <textarea id="edit-bio" placeholder="Parlez de vous...">${this.currentUser.bio || ''}</textarea>
-          </div>
-          <div style="display: flex; gap: 10px;">
-            <button class="btn btn-primary" onclick="app.updateProfile()">
-              <i class="fas fa-save"></i> Enregistrer
-            </button>
-            <button class="btn btn-secondary" onclick="app.goToProfile()">
-              Annuler
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  async updateProfile() {
-    const name = document.getElementById('edit-name').value;
-    const bio = document.getElementById('edit-bio').value;
-
-    if (!name) {
-      showToast('Le nom est requis', 'error');
-      return;
-    }
-
-    try {
-      showSpinner(true);
-      await api.updateProfile({ name, bio });
-      this.currentUser.name = name;
-      this.currentUser.bio = bio;
-      localStorage.setItem('user', JSON.stringify(this.currentUser));
-      showSpinner(false);
-      showToast('Profil mis à jour!', 'success');
-      this.goToProfile();
-    } catch (error) {
-      showSpinner(false);
-      showToast(error.message, 'error');
-    }
-  }
-
-  // ============ FRIENDS PAGE ============
-  async goToFriends() {
-    this.page = 'friends';
-    this.updateSidebar();
-    const container = document.getElementById('page-container');
-    
-    container.innerHTML = `
-      <div class="page-content">
-        <h2 style="margin-bottom: 30px;"><i class="fas fa-users"></i> Amis</h2>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
-          <div class="card" onclick="app.showFriendsList()" style="cursor: pointer; text-align: center; padding: 30px;">
-            <i class="fas fa-user-friends" style="font-size: 32px; color: #4DA3FF; margin-bottom: 10px; display: block;"></i>
-            <h3 style="margin: 0;">Vos amis</h3>
-            <p id="friends-count" style="color: #6B7280;">Chargement...</p>
-          </div>
-          <div class="card" onclick="app.showFriendRequests()" style="cursor: pointer; text-align: center; padding: 30px;">
-            <i class="fas fa-user-plus" style="font-size: 32px; color: #F59E0B; margin-bottom: 10px; display: block;"></i>
-            <h3 style="margin: 0;">Demandes</h3>
-            <p id="requests-count" style="color: #6B7280;">Chargement...</p>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 20px;">Chercher des amis</h3>
-          <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-            <input type="text" id="search-friends" placeholder="Chercher un utilisateur..." />
-            <button class="btn btn-primary" onclick="app.searchFriends()">
-              <i class="fas fa-search"></i>
-            </button>
-          </div>
-          <div id="search-results"></div>
-        </div>
-      </div>
-    `;
-
-    await this.loadFriendsStats();
-  }
-
-  async loadFriendsStats() {
-    try {
-      const friends = await api.getFriendsList();
-      const requests = await api.getFriendRequests();
-      document.getElementById('friends-count').textContent = `${friends.length} amis`;
-      document.getElementById('requests-count').textContent = `${requests.length} demandes`;
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async showFriendsList() {
-    try {
-      const friends = await api.getFriendsList();
-      showModal('Mes amis', `
-        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
-          ${friends.map(friend => `
-            <div class="card" style="display: flex; align-items: center; gap: 10px; padding: 15px;">
-              <div class="avatar">
-                ${friend.avatar ? `<img src="${friend.avatar}" />` : getInitials(friend.name)}
-              </div>
-              <div style="flex: 1;">
-                <p style="margin: 0; font-weight: 600;">${friend.name}</p>
-              </div>
-              <button class="btn btn-secondary btn-sm" onclick="app.goToMessages()">
-                <i class="fas fa-comment"></i>
-              </button>
-            </div>
-          `).join('')}
-        </div>
-      `);
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  async showFriendRequests() {
-    try {
-      const requests = await api.getFriendRequests();
-      showModal('Demandes d\'amis', `
-        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
-          ${requests.map(req => `
-            <div class="card" style="display: flex; align-items: center; gap: 10px; padding: 15px;">
-              <div class="avatar">
-                ${req.avatar ? `<img src="${req.avatar}" />` : getInitials(req.name)}
-              </div>
-              <div style="flex: 1;">
-                <p style="margin: 0; font-weight: 600;">${req.name}</p>
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="app.respondFriendRequest('${req.id}', true)">
-                <i class="fas fa-check"></i>
-              </button>
-              <button class="btn btn-danger btn-sm" onclick="app.respondFriendRequest('${req.id}', false)">
-                <i class="fas fa-times"></i>
-              </button>
-            </div>
-          `).join('')}
-        </div>
-      `);
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  async searchFriends() {
-    const query = document.getElementById('search-friends').value;
-    if (!query) return;
-
-    try {
-      const users = await api.searchUsers(query);
-      const resultsDiv = document.getElementById('search-results');
-      
-      resultsDiv.innerHTML = users.map(user => `
-        <div class="card" style="display: flex; align-items: center; gap: 10px; padding: 15px; margin-bottom: 10px;">
-          <div class="avatar">
-            ${user.avatar ? `<img src="${user.avatar}" />` : getInitials(user.name)}
-          </div>
-          <div style="flex: 1;">
-            <p style="margin: 0; font-weight: 600;">${user.name}</p>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="app.sendFriendRequest('${user.id}')">
-            <i class="fas fa-user-plus"></i> Ajouter
-          </button>
-        </div>
-      `).join('');
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  async sendFriendRequest(userId) {
-    try {
-      await api.sendFriendRequest(userId);
-      showToast('Demande d\'ami envoyée!', 'success');
-      this.loadFriendsStats();
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  async respondFriendRequest(userId, accept) {
-    try {
-      await api.respondFriendRequest(userId, accept);
-      closeModal();
-      showToast(accept ? 'Ami ajouté!' : 'Demande refusée', 'success');
-      this.loadFriendsStats();
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  // ============ SETTINGS PAGE ============
-  goToSettings() {
-    this.page = 'settings';
-    this.updateSidebar();
-    const container = document.getElementById('page-container');
-    
-    container.innerHTML = `
-      <div class="page-content">
-        <h2 style="margin-bottom: 30px;"><i class="fas fa-cog"></i> Paramètres</h2>
-        
-        <div class="card" style="margin-bottom: 20px;">
-          <h3 style="margin-bottom: 20px;">Compte</h3>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #F3F4F6;">
-            <div>
-              <p style="margin: 0; font-weight: 600;">Changer mot de passe</p>
-              <p style="margin: 5px 0 0 0; font-size: 13px; color: #6B7280;">Sécurisez votre compte</p>
-            </div>
-            <button class="btn btn-secondary" onclick="app.showChangePassword()">
-              <i class="fas fa-key"></i> Changer
-            </button>
-          </div>
-        </div>
-
-        <div class="card" style="margin-bottom: 20px;">
-          <h3 style="margin-bottom: 20px;">Confidentialité</h3>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #F3F4F6;">
-            <div>
-              <p style="margin: 0; font-weight: 600;">Profil public</p>
-              <p style="margin: 5px 0 0 0; font-size: 13px; color: #6B7280;">Autoriser les autres à voir votre profil</p>
-            </div>
-            <label style="position: relative; display: inline-block; width: 50px; height: 24px;">
-              <input type="checkbox" style="opacity: 0; width: 0; height: 0;" />
-              <span style="
-                position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-                background-color: #ccc; transition: 0.4s; border-radius: 24px;
-              "></span>
-            </label>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 20px;">Danger</h3>
-          <button class="btn btn-danger" style="width: 100%;" onclick="app.confirmLogout()">
-            <i class="fas fa-sign-out-alt"></i> Déconnexion
-          </button>
-        </div>
-      </div>
-    `;
-  }
-
-  showChangePassword() {
-    showModal('Changer mot de passe', `
-      <div class="form-group">
-        <label>Mot de passe actuel</label>
-        <input type="password" id="current-pwd" placeholder="••••••••" />
-      </div>
-      <div class="form-group">
-        <label>Nouveau mot de passe</label>
-        <input type="password" id="new-pwd" placeholder="••••••••" />
-      </div>
-      <div class="form-group">
-        <label>Confirmer</label>
-        <input type="password" id="confirm-pwd" placeholder="••••••••" />
-      </div>
-    `, [
-      { label: 'Enregistrer', action: 'app.updatePassword()' },
-      { label: 'Annuler', action: 'closeModal()', class: 'btn-secondary' }
-    ]);
-  }
-
-  async updatePassword() {
-    showToast('Fonctionnalité en développement', 'info');
-  }
-
-  confirmLogout() {
-    showModal('Déconnexion', `
-      <p>Êtes-vous sûr de vouloir vous déconnecter ?</p>
-    `, [
-      { label: 'Déconnexion', action: 'app.logout()', class: 'btn-danger' },
-      { label: 'Annuler', action: 'closeModal()', class: 'btn-secondary' }
-    ]);
-  }
-
-  // ============ ADMIN PAGE ============
-  async goToAdmin() {
-    this.page = 'admin';
-    this.updateSidebar();
-    const container = document.getElementById('page-container');
-    
-    container.innerHTML = `
-      <div class="page-content">
-        <h2 style="margin-bottom: 30px;"><i class="fas fa-shield-alt"></i> Administration</h2>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;" id="admin-stats">
-          <div style="text-align: center; padding: 30px; background: white; border-radius: 12px;">
-            <i class="fas fa-spinner fa-spin"></i> Chargement...
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 20px;">Gestion des utilisateurs</h3>
-          <button class="btn btn-primary" onclick="app.showAdminUsers()">
-            <i class="fas fa-users"></i> Voir tous les utilisateurs
-          </button>
-        </div>
-      </div>
-    `;
-
-    await this.loadAdminStats();
-  }
-
-  async loadAdminStats() {
-    try {
-      const stats = await api.getStats();
-      document.getElementById('admin-stats').innerHTML = `
-        <div class="card" style="text-align: center;">
-          <i class="fas fa-users" style="font-size: 32px; color: #4DA3FF; margin-bottom: 10px; display: block;"></i>
-          <h3 style="margin: 0;">${stats.users}</h3>
-          <p style="color: #6B7280;">Utilisateurs</p>
-        </div>
-        <div class="card" style="text-align: center;">
-          <i class="fas fa-newspaper" style="font-size: 32px; color: #22C55E; margin-bottom: 10px; display: block;"></i>
-          <h3 style="margin: 0;">${stats.posts}</h3>
-          <p style="color: #6B7280;">Publications</p>
-        </div>
-      `;
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async showAdminUsers() {
-    try {
-      const users = await api.getUsers();
-      showModal('Utilisateurs', `
-        <div style="max-height: 500px; overflow-y: auto;">
-          ${users.map(user => `
-            <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; margin-bottom: 10px;">
-              <div>
-                <p style="margin: 0; font-weight: 600;">${user.name}</p>
-                <p style="margin: 5px 0 0 0; font-size: 13px; color: #6B7280;">${user.email}</p>
-              </div>
-              <button class="btn btn-danger btn-sm" onclick="app.adminDeleteUser('${user.id}')">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          `).join('')}
-        </div>
-      `);
-    } catch (error) {
-      showToast(error.message, 'error');
-    }
-  }
-
-  async adminDeleteUser(userId) {
-    if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
-      try {
-        await api.deleteUser(userId);
-        showToast('Utilisateur supprimé', 'success');
-        this.goToAdmin();
-      } catch (error) {
-        showToast(error.message, 'error');
-      }
-    }
-  }
-
-  // ============ UTILITY METHODS ============
-  updateSidebar() {
-    const items = document.querySelectorAll('.sidebar-item');
-    items.forEach(item => item.classList.remove('active'));
-    
-    const pageMap = {
-      feed: 0,
-      friends: 1,
-      messages: 2,
-      notifications: 3,
-      profile: 4,
-      settings: 5,
-      admin: 6
-    };
-    
-    if (pageMap[this.page] !== undefined && items[pageMap[this.page]]) {
-      items[pageMap[this.page]].classList.add('active');
-    }
-  }
-
-  updateUserStatus(userId, status) {
-    const badge = document.getElementById(`user-status-${userId}`);
-    if (badge) {
-      badge.style.display = status === 'online' ? 'inline-flex' : 'none';
-    }
-  }
-
-  handleNewMessage(data) {
-    showToast(`${data.senderName}: ${data.content}`, 'info');
-  }
-
-  showTypingIndicator(data) {
-    // TODO: Show typing indicator
-  }
-
-  hideTypingIndicator(senderId) {
-    // TODO: Hide typing indicator
-  }
-
-  logout() {
-    api.logout();
-    this.renderLoginPage();
+  },
+  patch(path, body) { return this.request(path, { method: 'PATCH', body: JSON.stringify(body || {}) }); },
+  delete(path) { return this.request(path, { method: 'DELETE' }); }
+};
+
+const state = {
+  user: null,
+  page: 'feed',
+  posts: [],
+  activeChat: null,
+  socket: null
+};
+
+const app = document.getElementById('app');
+const toast = document.getElementById('toast');
+
+const escapeHtml = (value = '') => String(value)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
+const fileUrl = (name) => {
+  if (!name || name.startsWith('default-')) return '';
+  return `/uploads/${name}`;
+};
+
+const initials = (user = {}) => {
+  const value = user.fullname || user.username || 'U';
+  return value.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+};
+
+const avatar = (user = {}, size = '') => {
+  const src = fileUrl(user.avatar);
+  return `<div class="avatar ${size}">${src ? `<img src="${src}" alt="">` : initials(user)}</div>`;
+};
+
+const dateLabel = (value) => {
+  if (!value) return '';
+  const diff = Date.now() - new Date(value).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'maintenant';
+  if (min < 60) return `${min} min`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours} h`;
+  return new Date(value).toLocaleDateString('fr-FR');
+};
+
+const notify = (message) => {
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(notify.timer);
+  notify.timer = setTimeout(() => toast.classList.remove('show'), 2600);
+};
+
+async function boot() {
+  try {
+    const { user } = await api.get('/auth/me');
+    state.user = user;
+    connectSocket();
+    renderShell();
+    await navigate('feed');
+  } catch {
+    renderAuth('login');
   }
 }
 
-// Initialize app
-const app = new App();
+function connectSocket() {
+  state.socket = io();
+  state.socket.emit('user:connect', String(state.user.id));
+  state.socket.on('message:receive', (message) => {
+    notify('Nouveau message recu');
+    if (state.page === 'messages' && state.activeChat) openChat(state.activeChat.otherUser.id);
+  });
+  state.socket.on('notification:new', () => {
+    if (state.page === 'notifications') loadNotifications();
+  });
+}
+
+function renderAuth(mode) {
+  app.innerHTML = `
+    <main class="auth-screen">
+      <section class="auth-card">
+        <h1 class="brand"><span class="brand-mark">K</span> Kontact</h1>
+        <p class="muted">Un reseau social rapide, conversationnel et proche de Telegram.</p>
+        <div class="auth-tabs">
+          <button class="${mode === 'login' ? 'active' : ''}" data-auth-tab="login">Connexion</button>
+          <button class="${mode === 'register' ? 'active' : ''}" data-auth-tab="register">Inscription</button>
+        </div>
+        ${mode === 'login' ? loginForm() : registerForm()}
+      </section>
+    </main>
+  `;
+}
+
+function loginForm() {
+  return `
+    <form class="form" id="login-form">
+      <label class="field"><span>Email</span><input name="email" type="email" required></label>
+      <label class="field"><span>Mot de passe</span><input name="password" type="password" required></label>
+      <button class="btn btn-primary" type="submit">Se connecter</button>
+    </form>
+  `;
+}
+
+function registerForm() {
+  return `
+    <form class="form" id="register-form">
+      <label class="field"><span>Nom complet</span><input name="fullname" required></label>
+      <label class="field"><span>Nom utilisateur</span><input name="username" required></label>
+      <label class="field"><span>Email</span><input name="email" type="email" required></label>
+      <label class="field"><span>Mot de passe</span><input name="password" type="password" minlength="6" required></label>
+      <label class="field"><span>Photo</span><input name="avatar" type="file" accept="image/*"></label>
+      <button class="btn btn-primary" type="submit">Creer le compte</button>
+    </form>
+  `;
+}
+
+function renderShell() {
+  app.innerHTML = `
+    <div class="app-shell">
+      <aside class="rail">
+        <div class="rail-header">
+          <h1 class="brand"><span class="brand-mark">K</span><span class="brand-text">Kontact</span></h1>
+        </div>
+        <nav class="nav">
+          ${navButton('feed', 'Accueil')}
+          ${navButton('messages', 'Messages')}
+          ${navButton('friends', 'Amis')}
+          ${navButton('notifications', 'Notifications')}
+          ${navButton('search', 'Recherche')}
+          ${navButton('profile', 'Profil')}
+          ${state.user.role === 'admin' ? navButton('admin', 'Admin') : ''}
+        </nav>
+        <div class="rail-user">
+          ${avatar(state.user)}
+          <div class="user-copy">
+            <strong>${escapeHtml(state.user.fullname)}</strong>
+            <div class="muted">@${escapeHtml(state.user.username)}</div>
+          </div>
+        </div>
+      </aside>
+      <main class="main-panel" id="main-panel"></main>
+      <aside class="side-panel" id="side-panel"></aside>
+    </div>
+  `;
+  renderSidePanel();
+}
+
+function navButton(page, label) {
+  return `<button class="${state.page === page ? 'active' : ''}" data-page="${page}"><span class="nav-label">${label}</span><span>${icon(page)}</span></button>`;
+}
+
+function icon(page) {
+  return ({ feed: '⌂', messages: '✉', friends: '+', notifications: '•', search: '⌕', profile: '◉', admin: '⚙' })[page] || '•';
+}
+
+async function navigate(page) {
+  state.page = page;
+  document.querySelectorAll('[data-page]').forEach((el) => el.classList.toggle('active', el.dataset.page === page));
+  const main = document.getElementById('main-panel');
+  main.innerHTML = '<div class="empty">Chargement...</div>';
+  if (page === 'feed') return loadFeed();
+  if (page === 'messages') return loadMessages();
+  if (page === 'friends') return loadFriends();
+  if (page === 'notifications') return loadNotifications();
+  if (page === 'search') return loadSearch();
+  if (page === 'profile') return loadProfile();
+  if (page === 'admin') return loadAdmin();
+}
+
+function renderSidePanel() {
+  const side = document.getElementById('side-panel');
+  if (!side) return;
+  side.innerHTML = `
+    <div class="stack">
+      <div class="card stack">
+        <div class="row">${avatar(state.user, 'large')}<div><h2>${escapeHtml(state.user.fullname)}</h2><p class="muted">@${escapeHtml(state.user.username)}</p></div></div>
+        <p>${escapeHtml(state.user.bio || 'Profil Kontact pret a discuter.')}</p>
+        <button class="btn btn-secondary" data-page="profile">Modifier le profil</button>
+      </div>
+      <div class="card stack">
+        <strong>Recherche rapide</strong>
+        <input id="quick-search" placeholder="Trouver un utilisateur">
+        <div id="quick-results" class="list"></div>
+      </div>
+      <button class="btn btn-danger" id="logout-btn">Deconnexion</button>
+    </div>
+  `;
+}
+
+async function loadFeed() {
+  const main = document.getElementById('main-panel');
+  main.innerHTML = `
+    <div class="topbar"><div><h1>Fil social</h1><p class="muted">Publiez, reagissez et lancez des conversations.</p></div></div>
+    <form class="card stack" id="post-form">
+      <div class="row">${avatar(state.user)}<textarea name="content" placeholder="Quoi de neuf ?" required></textarea></div>
+      <div class="split">
+        <input name="image" type="file" accept="image/*">
+        <select name="visibility"><option value="public">Public</option><option value="friends">Amis</option><option value="private">Prive</option></select>
+        <button class="btn btn-primary">Publier</button>
+      </div>
+    </form>
+    <section class="stack" id="posts"></section>
+  `;
+  await refreshPosts();
+}
+
+async function refreshPosts() {
+  const { posts } = await api.get('/posts');
+  state.posts = posts;
+  document.getElementById('posts').innerHTML = posts.length ? posts.map(renderPost).join('') : '<div class="card empty">Aucune publication.</div>';
+}
+
+function renderPost(post) {
+  return `
+    <article class="card post-card" data-post="${post.id}">
+      <div class="split">
+        <div class="row">${avatar(post.author)}<div><strong>${escapeHtml(post.author.fullname)}</strong><div class="muted">@${escapeHtml(post.author.username)} · ${dateLabel(post.created_at)}</div></div></div>
+        ${(post.user_id === state.user.id || state.user.role === 'admin') ? `<button class="btn btn-ghost btn-small" data-delete-post="${post.id}">Supprimer</button>` : ''}
+      </div>
+      <p>${escapeHtml(post.content)}</p>
+      ${post.image ? `<img class="post-image" src="${fileUrl(post.image)}" alt="">` : ''}
+      <div class="actions">
+        <button class="btn btn-ghost btn-small" data-like="${post.id}">${post.user_liked ? 'Aime' : 'J aime'} · ${post.likes_count}</button>
+        <button class="btn btn-ghost btn-small" data-comments="${post.id}">Commentaires · ${post.comments_count}</button>
+        <button class="btn btn-ghost btn-small" data-share="${post.id}">Partager</button>
+      </div>
+      <div class="comment-box" id="comments-${post.id}" hidden></div>
+    </article>
+  `;
+}
+
+async function toggleComments(postId) {
+  const box = document.getElementById(`comments-${postId}`);
+  box.hidden = !box.hidden;
+  if (box.hidden) return;
+  const { comments } = await api.get(`/comments/post/${postId}`);
+  box.innerHTML = `
+    <div class="stack">
+      ${comments.map((c) => `<div class="row">${avatar(c)}<div><strong>${escapeHtml(c.fullname)}</strong><div>${escapeHtml(c.content)}</div><small class="muted">${dateLabel(c.created_at)}</small></div></div>`).join('') || '<span class="muted">Aucun commentaire</span>'}
+      <form class="row" data-comment-form="${postId}">
+        <input name="content" placeholder="Ajouter un commentaire" required>
+        <button class="btn btn-primary btn-small">Envoyer</button>
+      </form>
+    </div>
+  `;
+}
+
+async function loadMessages() {
+  document.getElementById('main-panel').innerHTML = `
+    <section class="chat-layout">
+      <div class="stack"><h1>Messages</h1><div id="conversation-list" class="list"></div></div>
+      <div class="chat" id="chat"><div class="empty">Choisissez une conversation.</div></div>
+    </section>
+  `;
+  const { conversations } = await api.get('/messages');
+  document.getElementById('conversation-list').innerHTML = conversations.length ? conversations.map((c) => `
+    <button class="list-item" data-open-chat="${c.other_user_id}">
+      ${avatar(c)}
+      <span><strong>${escapeHtml(c.fullname)}</strong><br><small class="muted">${escapeHtml(c.last_message || 'Aucun message')}</small></span>
+    </button>
+  `).join('') : '<div class="card empty">Cherchez un utilisateur pour demarrer un chat.</div>';
+}
+
+async function openChat(userId) {
+  const { conversationId, otherUser, messages } = await api.get(`/messages/${userId}`);
+  state.activeChat = { conversationId, otherUser };
+  document.getElementById('chat').innerHTML = `
+    <header class="chat-header"><strong>${escapeHtml(otherUser.fullname)}</strong><div>@${escapeHtml(otherUser.username)}</div></header>
+    <div class="messages" id="message-thread">
+      ${messages.map((m) => `<div class="bubble ${m.sender_id === state.user.id ? 'mine' : ''}">${escapeHtml(m.content)}<br><small>${dateLabel(m.created_at)}</small></div>`).join('')}
+    </div>
+    <form class="composer" id="message-form">
+      <input name="content" placeholder="Message" autocomplete="off" required>
+      <button class="btn btn-primary">Envoyer</button>
+    </form>
+  `;
+  document.getElementById('message-thread').scrollTop = document.getElementById('message-thread').scrollHeight;
+}
+
+async function loadFriends() {
+  const [{ friends }, { requests }, { suggestions }] = await Promise.all([
+    api.get('/friends'),
+    api.get('/friends/requests'),
+    api.get('/friends/suggestions')
+  ]);
+  document.getElementById('main-panel').innerHTML = `
+    <div class="topbar"><h1>Amis</h1></div>
+    <div class="stack">
+      <section class="card stack"><h2>Demandes</h2><div class="grid">${requests.map(renderRequest).join('') || '<p class="muted">Aucune demande.</p>'}</div></section>
+      <section class="card stack"><h2>Mes amis</h2><div class="grid">${friends.map(renderFriend).join('') || '<p class="muted">Aucun ami pour le moment.</p>'}</div></section>
+      <section class="card stack"><h2>Suggestions</h2><div class="grid">${suggestions.map(renderSuggestion).join('') || '<p class="muted">Aucune suggestion.</p>'}</div></section>
+    </div>
+  `;
+}
+
+function renderFriend(user) {
+  return `<div class="card stack">${avatar(user, 'large')}<strong>${escapeHtml(user.fullname)}</strong><button class="btn btn-primary btn-small" data-open-chat="${user.id}">Message</button><button class="btn btn-ghost btn-small" data-remove-friend="${user.id}">Retirer</button></div>`;
+}
+
+function renderSuggestion(user) {
+  return `<div class="card stack">${avatar(user, 'large')}<strong>${escapeHtml(user.fullname)}</strong><span class="muted">@${escapeHtml(user.username)}</span><button class="btn btn-primary btn-small" data-add-friend="${user.id}">Ajouter</button></div>`;
+}
+
+function renderRequest(req) {
+  return `<div class="card stack">${avatar(req, 'large')}<strong>${escapeHtml(req.fullname)}</strong><button class="btn btn-primary btn-small" data-respond="${req.id}" data-accept="true">Accepter</button><button class="btn btn-danger btn-small" data-respond="${req.id}" data-accept="false">Refuser</button></div>`;
+}
+
+async function loadNotifications() {
+  const { notifications, unread } = await api.get('/notifications');
+  document.getElementById('main-panel').innerHTML = `
+    <div class="topbar"><h1>Notifications</h1><button class="btn btn-secondary" id="read-all">Tout lire (${unread})</button></div>
+    <div class="stack">${notifications.map((n) => `<div class="card split"><div><strong>${escapeHtml(n.title)}</strong><p class="muted">${escapeHtml(n.message)} · ${dateLabel(n.created_at)}</p></div><button class="btn btn-ghost btn-small" data-read-notif="${n.id}">${n.is_read ? 'Lu' : 'Lire'}</button></div>`).join('') || '<div class="card empty">Aucune notification.</div>'}</div>
+  `;
+}
+
+async function loadSearch() {
+  document.getElementById('main-panel').innerHTML = `
+    <div class="topbar"><h1>Recherche</h1></div>
+    <div class="card stack"><input id="search-input" placeholder="Rechercher des personnes"><div id="search-results" class="grid"></div></div>
+  `;
+}
+
+async function runSearch(targetId, query) {
+  const { users } = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
+  document.getElementById(targetId).innerHTML = users.map((user) => `
+    <div class="card stack">${avatar(user, 'large')}<strong>${escapeHtml(user.fullname)}</strong><span class="muted">@${escapeHtml(user.username)}</span><button class="btn btn-primary btn-small" data-open-chat="${user.id}">Message</button><button class="btn btn-secondary btn-small" data-add-friend="${user.id}">Ajouter</button></div>
+  `).join('') || '<p class="muted">Aucun resultat.</p>';
+}
+
+async function loadProfile() {
+  const { user } = await api.get('/users/profile');
+  state.user = user;
+  document.getElementById('main-panel').innerHTML = `
+    <form class="card stack" id="profile-form">
+      <div class="row">${avatar(user, 'large')}<div><h1>${escapeHtml(user.fullname)}</h1><p class="muted">@${escapeHtml(user.username)}</p></div></div>
+      <label class="field"><span>Nom complet</span><input name="fullname" value="${escapeHtml(user.fullname)}" required></label>
+      <label class="field"><span>Nom utilisateur</span><input name="username" value="${escapeHtml(user.username)}" required></label>
+      <label class="field"><span>Bio</span><textarea name="bio">${escapeHtml(user.bio || '')}</textarea></label>
+      <label class="field"><span>Avatar</span><input name="avatar" type="file" accept="image/*"></label>
+      <button class="btn btn-primary">Enregistrer</button>
+    </form>
+  `;
+}
+
+async function loadAdmin() {
+  const [{ stats }, { users }, { posts }] = await Promise.all([
+    api.get('/admin/stats'),
+    api.get('/admin/users'),
+    api.get('/admin/posts')
+  ]);
+  document.getElementById('main-panel').innerHTML = `
+    <div class="topbar"><h1>Administration</h1></div>
+    <section class="grid">
+      ${Object.entries(stats).map(([k, v]) => `<div class="card stat"><span class="muted">${k}</span><strong>${v}</strong></div>`).join('')}
+    </section>
+    <section class="card stack" style="margin-top:14px"><h2>Utilisateurs</h2>${users.map((u) => `<div class="split"><span>${escapeHtml(u.fullname)} · ${escapeHtml(u.email)} · ${u.status}</span><span><button class="btn btn-secondary btn-small" data-toggle-user="${u.id}">Statut</button><button class="btn btn-danger btn-small" data-admin-delete-user="${u.id}">Supprimer</button></span></div>`).join('')}</section>
+    <section class="card stack" style="margin-top:14px"><h2>Publications</h2>${posts.map((p) => `<div class="split"><span>${escapeHtml(p.username)}: ${escapeHtml(p.content).slice(0, 90)}</span><button class="btn btn-danger btn-small" data-admin-delete-post="${p.id}">Supprimer</button></div>`).join('')}</section>
+  `;
+}
+
+document.addEventListener('click', async (event) => {
+  const el = event.target.closest('button, [data-page]');
+  if (!el) return;
+  try {
+    if (el.dataset.authTab) return renderAuth(el.dataset.authTab);
+    if (el.dataset.page) return navigate(el.dataset.page);
+    if (el.id === 'logout-btn') { await api.post('/auth/logout'); state.user = null; return renderAuth('login'); }
+    if (el.dataset.like) { await api.post('/likes', { postId: el.dataset.like }); return refreshPosts(); }
+    if (el.dataset.comments) return toggleComments(el.dataset.comments);
+    if (el.dataset.deletePost) { await api.delete(`/posts/${el.dataset.deletePost}`); return refreshPosts(); }
+    if (el.dataset.share) return navigator.clipboard?.writeText(`${location.origin}/posts/${el.dataset.share}`).then(() => notify('Lien copie'));
+    if (el.dataset.addFriend) { await api.post(`/friends/request/${el.dataset.addFriend}`); notify('Demande envoyee'); if (state.page === 'friends') loadFriends(); }
+    if (el.dataset.removeFriend) { await api.delete(`/friends/${el.dataset.removeFriend}`); return loadFriends(); }
+    if (el.dataset.respond) { await api.post(`/friends/respond/${el.dataset.respond}`, { accept: el.dataset.accept === 'true' }); return loadFriends(); }
+    if (el.dataset.openChat) { await navigate('messages'); return openChat(el.dataset.openChat); }
+    if (el.id === 'read-all') { await api.patch('/notifications/read-all'); return loadNotifications(); }
+    if (el.dataset.readNotif) { await api.patch(`/notifications/${el.dataset.readNotif}`); return loadNotifications(); }
+    if (el.dataset.toggleUser) { await api.patch(`/admin/users/${el.dataset.toggleUser}/toggle`); return loadAdmin(); }
+    if (el.dataset.adminDeleteUser) { await api.delete(`/admin/users/${el.dataset.adminDeleteUser}`); return loadAdmin(); }
+    if (el.dataset.adminDeletePost) { await api.delete(`/admin/posts/${el.dataset.adminDeletePost}`); return loadAdmin(); }
+  } catch (err) {
+    notify(err.message);
+  }
+});
+
+document.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  try {
+    if (form.id === 'login-form') {
+      const body = Object.fromEntries(new FormData(form));
+      const { user } = await api.post('/auth/login', body);
+      state.user = user;
+      connectSocket();
+      renderShell();
+      return navigate('feed');
+    }
+    if (form.id === 'register-form') {
+      const data = new FormData(form);
+      const { user } = await api.post('/auth/register', data);
+      state.user = user;
+      connectSocket();
+      renderShell();
+      return navigate('feed');
+    }
+    if (form.id === 'post-form') {
+      await api.post('/posts', new FormData(form));
+      form.reset();
+      return refreshPosts();
+    }
+    if (form.dataset.commentForm) {
+      const content = new FormData(form).get('content');
+      await api.post('/comments', { postId: form.dataset.commentForm, content });
+      await refreshPosts();
+      return toggleComments(form.dataset.commentForm);
+    }
+    if (form.id === 'message-form') {
+      const content = new FormData(form).get('content');
+      const receiverId = state.activeChat.otherUser.id;
+      state.socket.emit('message:send', { senderId: state.user.id, receiverId, content });
+      form.reset();
+      setTimeout(() => openChat(receiverId), 250);
+    }
+    if (form.id === 'profile-form') {
+      const { user } = await api.put('/users/profile', new FormData(form));
+      state.user = user;
+      renderShell();
+      await navigate('profile');
+      notify('Profil mis a jour');
+    }
+  } catch (err) {
+    notify(err.message);
+  }
+});
+
+document.addEventListener('input', async (event) => {
+  if (event.target.id === 'search-input' && event.target.value.trim().length >= 2) {
+    runSearch('search-results', event.target.value.trim());
+  }
+  if (event.target.id === 'quick-search' && event.target.value.trim().length >= 2) {
+    runSearch('quick-results', event.target.value.trim());
+  }
+});
+
+boot();

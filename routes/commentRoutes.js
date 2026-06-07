@@ -1,16 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const comment = require('../controllers/commentController');
+const { isAuthenticated } = require('../middleware/authMiddleware');
 
-const commentController = require('../controllers/commentController');
-const authMiddleware = require('../middleware/authMiddleware');
-
-// Ajouter un commentaire
-router.post('/', authMiddleware.isLoggedIn, commentController.createComment);
-
-// Récupérer tous les commentaires d’un post
-router.get('/post/:postId', authMiddleware.isLoggedIn, commentController.getCommentsByPost);
-
-// Supprimer un commentaire
-router.delete('/:id', authMiddleware.isLoggedIn, commentController.deleteComment);
+router.post('/', isAuthenticated, comment.createComment);
+router.get('/post/:postId', isAuthenticated, comment.getCommentsByPost);
+router.delete('/:id', isAuthenticated, comment.deleteComment);
 
 module.exports = router;

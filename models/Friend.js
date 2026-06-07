@@ -2,14 +2,26 @@ const db = require('../config/db');
 
 class Friend {
   static async sendRequest(sender_id, receiver_id) {
-    await db.execute(
-      'INSERT INTO friend_requests (sender_id, receiver_id) VALUES (?, ?)',
+    const [result] = await db.execute(
+      `INSERT IGNORE INTO friend_requests (sender_id, receiver_id)
+       VALUES (?, ?)`,
       [sender_id, receiver_id]
     );
+    return result;
   }
 
   static async respond(id, status) {
-    await db.execute('UPDATE friend_requests SET status = ? WHERE id = ?', [status, id]);
+    const [result] = await db.execute('UPDATE friend_requests SET status = ? WHERE id = ?', [status, id]);
+    return result.affectedRows;
+  }
+
+  static async remove(user1, user2) {
+    const [result] = await db.execute(`
+      DELETE FROM friend_requests
+      WHERE status = 'accepted'
+        AND ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))
+    `, [user1, user2, user2, user1]);
+    return result.affectedRows;
   }
 
   static async getRequests(user_id) {

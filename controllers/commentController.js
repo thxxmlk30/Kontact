@@ -1,100 +1,53 @@
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
+const Post = require('../models/Post');
 
-const commentController = {
-  async createComment(req, res) {
-    try {
-      const userId = req.session.user.id;
-      const { postId, content } = req.body;
-
-      if (!postId || !content || content.trim() === '') {
-        return res.status(400).json({
-          success: false,
-          message: 'Le contenu du commentaire est obligatoire.'
-        });
-      }
-
-      const newComment = await Comment.create({
-        post_id: postId,
-        user_id: userId,
-        content: content.trim()
-      });
-
-      await Notification.create({
-        user_id: req.body.postOwnerId,
-        type: 'comment',
-        ref_id: newComment.insertId,
-        is_read: 0
-      });
-
-      return res.status(201).json({
-        success: true,
-        message: 'Commentaire ajouté avec succès.',
-        commentId: newComment.insertId
-      });
-    } catch (error) {
-      console.error('createComment error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Erreur lors de la création du commentaire.'
-      });
+exports.createComment = async (req, res, next) => {
+  try {
+    const { postId, content } = req.body;
+    if (!postId || !content || !content.trim()) {
+      return res.status(400).json({ message: 'Le commentaire est obligatoire.' });
     }
-  },
 
-  async getCommentsByPost(req, res) {
-    try {
-      const { postId } = req.params;
+    const post = await Post.getById(postId);
+    if (!post) return res.status(404).json({ message: 'Publication introuvable.' });
 
-      const comments = await Comment.findByPostId(postId);
+    const result = await Comment.create({
+      post_id: postId,
+      user_id: req.session.user.id,
+      content: content.trim()
+    });
 
-      return res.status(200).json({
-        success: true,
-        comments
-      });
-    } catch (error) {
-      console.error('getCommentsByPost error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Erreur lors de la récupération des commentaires.'
-      });
+    if (post.user_id !== req.session.user.id) {
+      await Notification.create(post.user_id, 'comment', result.insertId);
     }
-  },
 
-  async deleteComment(req, res) {
-    try {
-      const userId = req.session.user.id;
-      const { id } = req.params;
-
-      const comment = await Comment.findById(id);
-
-      if (!comment) {
-        return res.status(404).json({
-          success: false,
-          message: 'Commentaire introuvable.'
-        });
-      }
-
-      if (comment.user_id !== userId && req.session.user.role !== 'admin') {
-        return res.status(403).json({
-          success: false,
-          message: 'Action non autorisée.'
-        });
-      }
-
-      await Comment.delete(id);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Commentaire supprimé avec succès.'
-      });
-    } catch (error) {
-      console.error('deleteComment error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Erreur lors de la suppression du commentaire.'
-      });
-    }
+    return res.status(201).json({ id: result.insertId, message: 'Commentaire ajoute.' });
+  } catch (err) {
+    return next(err);
   }
 };
 
-module.exports = commentController;
+exports.getCommentsByPost = async (req, res, next) => {
+  try {
+    const comments = await Comment.getByPost(req.params.postId);
+    return res.json({ comments });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+exports.deleteComment = async (req, res, next) => {
+  try {
+    const comment = await Comment.findById(req.params.id);
+    if (!comment) return res.status(404).json({ message: 'Commentaire introuvable.' });
+    if (comment.user_id !== req.session.user.id && req.session.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Action non autorisee.' });
+    }
+
+    await Comment.delete(req.params.id);
+    return res.json({ message: 'Commentaire supprime.' });
+  } catch (err) {
+    return next(err);
+  }
+};

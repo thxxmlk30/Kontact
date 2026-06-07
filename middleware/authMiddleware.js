@@ -1,18 +1,29 @@
-const jwt = require('jsonwebtoken');
-
-const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-
-  if (!token)
-    return res.status(401).json({ message: 'Accès refusé, token manquant' });
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    res.status(401).json({ message: 'Token invalide' });
+const isAuthenticated = (req, res, next) => {
+  if (req.session && req.session.user) {
+    return next();
   }
+
+  return res.status(401).json({ message: 'Authentification requise.' });
 };
 
-module.exports = authMiddleware;
+const isGuest = (req, res, next) => {
+  if (req.session && req.session.user) {
+    return res.status(409).json({ message: 'Utilisateur deja connecte.' });
+  }
+
+  return next();
+};
+
+const isAdmin = (req, res, next) => {
+  if (req.session && req.session.user && req.session.user.role === 'admin') {
+    return next();
+  }
+
+  return res.status(403).json({ message: 'Acces administrateur requis.' });
+};
+
+module.exports = isAuthenticated;
+module.exports.isAuthenticated = isAuthenticated;
+module.exports.isLoggedIn = isAuthenticated;
+module.exports.isGuest = isGuest;
+module.exports.isAdmin = isAdmin;
