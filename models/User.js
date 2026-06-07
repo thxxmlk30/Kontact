@@ -1,25 +1,42 @@
 const db = require('../config/db');
 
+const query = (sql, params) =>
+  new Promise((resolve, reject) =>
+    db.query(sql, params, (err, results) => (err ? reject(err) : resolve(results)))
+  );
+
 const User = {
-  create: (userData, callback) => {
-    const sql = `INSERT INTO users (username, email, password) VALUES (?, ?, ?)`;
-    db.query(sql, [userData.username, userData.email, userData.password], callback);
+  create: async ({ fullname, username, email, password, avatar }) => {
+    const sql = `
+      INSERT INTO users (fullname, username, email, password, avatar)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    const result = await query(sql, [fullname, username, email, password, avatar ?? null]);
+    return result.insertId;
   },
 
-  findByEmail: (email, callback) => {
-    const sql = `SELECT * FROM users WHERE email = ?`;
-    db.query(sql, [email], callback);
+  findByEmail: async (email) => {
+    const rows = await query(`SELECT * FROM users WHERE email = ?`, [email]);
+    return rows[0] ?? null;
   },
 
-  findById: (id, callback) => {
-    const sql = `SELECT id, username, email, avatar, created_at FROM users WHERE id = ?`;
-    db.query(sql, [id], callback);
+  findByUsername: async (username) => {
+    const rows = await query(`SELECT * FROM users WHERE username = ?`, [username]);
+    return rows[0] ?? null;
   },
 
-  update: (id, data, callback) => {
-    const sql = `UPDATE users SET username = ?, avatar = ? WHERE id = ?`;
-    db.query(sql, [data.username, data.avatar, id], callback);
-  }
+  findById: async (id) => {
+    const rows = await query(
+      `SELECT id, fullname, username, email, bio, avatar, cover_image, role, status, created_at
+       FROM users WHERE id = ?`,
+      [id]
+    );
+    return rows[0] ?? null;
+  },
+
+  update: async (id, { username, avatar }) => {
+    await query(`UPDATE users SET username = ?, avatar = ? WHERE id = ?`, [username, avatar, id]);
+  },
 };
 
 module.exports = User;
