@@ -1,9 +1,9 @@
 const db = require('../config/db');
 
-const query = (sql, params) =>
-  new Promise((resolve, reject) =>
-    db.query(sql, params, (err, results) => (err ? reject(err) : resolve(results)))
-  );
+const query = async (sql, params) => {
+  const [results] = await db.query(sql, params);
+  return results;
+};
 
 const User = {
   create: async ({ fullname, username, email, password, avatar }) => {
@@ -11,12 +11,19 @@ const User = {
       INSERT INTO users (fullname, username, email, password, avatar)
       VALUES (?, ?, ?, ?, ?)
     `;
-    const result = await query(sql, [fullname, username, email, password, avatar ?? null]);
-    return result.insertId;
+    return query(sql, [fullname, username, email, password, avatar ?? 'default-avatar.png']);
   },
 
   findByEmail: async (email) => {
     const rows = await query(`SELECT * FROM users WHERE email = ?`, [email]);
+    return rows[0] ?? null;
+  },
+
+  findByUsernameOrEmail: async (identifier) => {
+    const rows = await query(
+      `SELECT * FROM users WHERE email = ? OR username = ?`,
+      [identifier, identifier]
+    );
     return rows[0] ?? null;
   },
 
@@ -34,8 +41,37 @@ const User = {
     return rows[0] ?? null;
   },
 
-  update: async (id, { username, avatar }) => {
-    await query(`UPDATE users SET username = ?, avatar = ? WHERE id = ?`, [username, avatar, id]);
+  getAll: async () => {
+    return query(`SELECT id, fullname, username, email, role, status, created_at FROM users ORDER BY created_at DESC`);
+  },
+
+  update: async (id, { fullname, username, bio, avatar, cover_image }) => {
+    const sql = `
+      UPDATE users 
+      SET fullname = ?, username = ?, bio = ?, avatar = ?, cover_image = ? 
+      WHERE id = ?
+    `;
+    return query(sql, [fullname, username, bio, avatar, cover_image, id]);
+  },
+
+  updateStatus: async (id, status) => {
+    return query(`UPDATE users SET status = ? WHERE id = ?`, [status, id]);
+  },
+
+  delete: async (id) => {
+    return query(`DELETE FROM users WHERE id = ?`, [id]);
+  },
+
+  search: async (q, userId) => {
+    const sql = `
+      SELECT id, fullname, username, avatar
+      FROM users
+      WHERE (fullname LIKE ? OR username LIKE ?)
+        AND id != ?
+      LIMIT 20
+    `;
+    const pattern = `%${q}%`;
+    return query(sql, [pattern, pattern, userId]);
   },
 };
 

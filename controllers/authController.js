@@ -45,8 +45,8 @@ exports.register = async (req, res, next) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const id = await User.create({ fullname, username, email, password: hash, avatar });
-    const user = await User.findById(id);
+    const result = await User.create({ fullname, username, email, password: hash, avatar });
+    const user = await User.findById(result.insertId);
     req.session.user = toPublicUser(user);
 
     return res.status(201).json({ user: req.session.user });
@@ -58,7 +58,8 @@ exports.register = async (req, res, next) => {
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findByEmail(email);
+    // L'identifiant peut être un email ou un nom d'utilisateur
+    const user = await User.findByUsernameOrEmail(email);
 
     const passwordMatches = user && (
       user.password.startsWith('$2')

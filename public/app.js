@@ -121,7 +121,7 @@ function renderAuth(mode) {
 function loginForm() {
   return `
     <form class="form" id="login-form">
-      <label class="field"><span>Email</span><input name="email" type="email" required></label>
+      <label class="field"><span>Email ou Pseudo</span><input name="email" type="text" placeholder="exemple@kontact.com" required></label>
       <label class="field"><span>Mot de passe</span><input name="password" type="password" required></label>
       <button class="btn btn-primary" type="submit">Se connecter</button>
     </form>

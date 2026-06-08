@@ -1,46 +1,40 @@
 const db = require('../config/db');
 
-class Notification {
-  static async create(dataOrUserId, type, refId) {
-    const data = typeof dataOrUserId === 'object'
-      ? dataOrUserId
-      : { user_id: dataOrUserId, type, ref_id: refId };
+const query = async (sql, params) => {
+  const [results] = await db.query(sql, params);
+  return results;
+};
 
-    const [result] = await db.execute(
-      'INSERT INTO notifications (user_id, type, ref_id, is_read) VALUES (?, ?, ?, ?)',
-      [data.user_id, data.type, data.ref_id || null, data.is_read || 0]
+const Notification = {
+  create: async (user_id, type, ref_id) => {
+    return query(
+      `INSERT INTO notifications (user_id, type, ref_id) VALUES (?, ?, ?)`,
+      [user_id, type, ref_id ?? null]
     );
-    return result;
-  }
+  },
 
-  static async getByUser(userId) {
-    const [rows] = await db.execute(
-      'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
-      [userId]
+  getByUser: async (user_id) => {
+    return query(
+      `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
+      [user_id]
     );
-    return rows;
-  }
+  },
 
-  static async markOneRead(id, userId) {
-    const [result] = await db.execute(
-      'UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?',
-      [id, userId]
-    );
-    return result.affectedRows;
-  }
-
-  static async markRead(userId) {
-    const [result] = await db.execute('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [userId]);
-    return result.affectedRows;
-  }
-
-  static async countUnread(userId) {
-    const [rows] = await db.execute(
-      'SELECT COUNT(*) AS total FROM notifications WHERE user_id = ? AND is_read = 0',
-      [userId]
+  countUnread: async (user_id) => {
+    const rows = await query(
+      `SELECT COUNT(*) as total FROM notifications WHERE user_id = ? AND is_read = 0`,
+      [user_id]
     );
     return rows[0].total;
+  },
+
+  markRead: async (user_id) => {
+    return query(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`, [user_id]);
+  },
+
+  markOneRead: async (id, user_id) => {
+    return query(`UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`, [id, user_id]);
   }
-}
+};
 
 module.exports = Notification;

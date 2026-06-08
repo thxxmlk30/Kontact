@@ -1,42 +1,35 @@
 const db = require('../config/db');
 
-class Comment {
-  static async create(dataOrPostId, userId, content) {
-    const data = typeof dataOrPostId === 'object'
-      ? dataOrPostId
-      : { post_id: dataOrPostId, user_id: userId, content };
+const query = async (sql, params) => {
+  const [results] = await db.query(sql, params);
+  return results;
+};
 
-    const [result] = await db.execute(
-      'INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)',
-      [data.post_id, data.user_id, data.content]
+const Comment = {
+  create: async ({ post_id, user_id, content }) => {
+    return query(
+      `INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)`,
+      [post_id, user_id, content]
     );
-    return result;
-  }
+  },
 
-  static async getByPost(postId) {
-    const [rows] = await db.execute(`
-      SELECT c.*, u.fullname, u.username, u.avatar
-      FROM comments c
-      JOIN users u ON c.user_id = u.id
-      WHERE c.post_id = ?
-      ORDER BY c.created_at ASC
-    `, [postId]);
-    return rows;
-  }
+  getByPost: async (post_id) => {
+    return query(
+      `SELECT comments.*, users.fullname, users.username, users.avatar
+       FROM comments JOIN users ON comments.user_id = users.id
+       WHERE comments.post_id = ? ORDER BY comments.created_at ASC`,
+      [post_id]
+    );
+  },
 
-  static async findByPostId(postId) {
-    return this.getByPost(postId);
-  }
+  findById: async (id) => {
+    const rows = await query(`SELECT * FROM comments WHERE id = ?`, [id]);
+    return rows[0] ?? null;
+  },
 
-  static async findById(id) {
-    const [rows] = await db.execute('SELECT * FROM comments WHERE id = ?', [id]);
-    return rows[0] || null;
-  }
-
-  static async delete(id) {
-    const [result] = await db.execute('DELETE FROM comments WHERE id = ?', [id]);
-    return result.affectedRows;
-  }
-}
+  delete: async (id) => {
+    return query(`DELETE FROM comments WHERE id = ?`, [id]);
+  },
+};
 
 module.exports = Comment;

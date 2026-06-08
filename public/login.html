@@ -95,6 +95,7 @@
       transition: background 0.2s;
     }
     .btn-primary:hover { background: #3B8FEF; }
+    .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
 
     .divider { text-align: center; color: var(--text-muted); margin: 18px 0; font-size: 13px; }
 
@@ -117,6 +118,17 @@
     .signup { text-align: center; margin-top: 20px; font-size: 14px; color: var(--text-secondary); }
     .signup a { color: var(--primary-light); font-weight: 600; text-decoration: none; }
 
+    .error-msg {
+      color: var(--error);
+      font-size: 13px;
+      margin-bottom: 12px;
+      display: none;
+      background: #FEF2F2;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #FECACA;
+    }
+
     @media (max-width: 640px) {
       .left { display: none; }
       .right { width: 100%; }
@@ -125,9 +137,9 @@
 </head>
 <body>
   <div class="left">
-    <div class="logo"> Kontact</div>
+    <div class="logo">Kontact</div>
     <h2>Heureux de vous revoir</h2>
-    <div style="width: 85%; height: 320px;backGround:rgba(255,255,255,0.2); border-radius: 24px; margin-top: 30px; border: 2px solid rgba(255,255,255,0.3);"></div>
+    <div style="width:85%;height:320px;background:rgba(255,255,255,0.2);border-radius:24px;margin-top:30px;border:2px solid rgba(255,255,255,0.3);"></div>
   </div>
 
   <div class="right">
@@ -135,24 +147,65 @@
       <h1>Connexion à Kontact</h1>
       <p>Connectez-vous pour continuer.</p>
 
-      <form action="/auth/login" method="POST">
-        <label>Email ou Numéro de téléphone</label>
-        <input type="text" name="email" placeholder="exemple@kontact.com" required>
+      <form id="loginForm">
+        <label>Email</label>
+        <input type="text" id="email" name="email" placeholder="exemple@kontact.com" autocomplete="username" required>
 
         <label>Mot de passe</label>
-        <input type="password" name="password" placeholder="••••••••" required>
+        <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
 
-        <div class="forgot"><a href="/public/forgot-password.html">Mot de passe oublié ?</a></div>
+        <div class="forgot"><a href="/forgot-password.html">Mot de passe oublié ?</a></div>
 
-        <button type="submit" class="btn-primary">Se connecter</button>
+        <div id="errorMsg" class="error-msg"></div>
+
+        <button type="submit" class="btn-primary" id="submitBtn">Se connecter</button>
       </form>
 
       <div class="divider">ou</div>
       <button class="btn-social">Se connecter avec Google</button>
       <button class="btn-social">Se connecter avec Facebook</button>
 
-      <div class="signup">Pas encore de compte ? <a href="/public/registrer.html">S'inscrire</a></div>
+      <div class="signup">Pas encore de compte ? <a href="/register.html">S'inscrire</a></div>
     </div>
   </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl  = document.getElementById('errorMsg');
+      const submitBtn = document.getElementById('submitBtn');
+
+      errorEl.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Connexion...';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorEl.textContent = data.message || 'Identifiants incorrects.';
+          errorEl.style.display = 'block';
+          return;
+        }
+
+        window.location.href = '/';
+      } catch (err) {
+        errorEl.textContent = 'Erreur réseau. Vérifiez votre connexion.';
+        errorEl.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Se connecter';
+      }
+    });
+  </script>
 </body>
 </html>

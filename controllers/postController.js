@@ -37,13 +37,13 @@ exports.create = async (req, res, next) => {
     }
 
     const image = req.file ? req.file.filename : null;
-    const postId = await Post.create({
+    const result = await Post.create({
       user_id: req.session.user.id,
       content: content.trim(),
       image,
       visibility
     });
-    const post = await Post.getById(postId);
+    const post = await Post.getById(result.insertId);
 
     return res.status(201).json({ post: mapPost(post) });
   } catch (err) {

@@ -1,66 +1,81 @@
 const db = require('../config/db');
 
-class Post {
-  static async create(data) {
-    const { user_id, content, image, visibility } = data;
-    const [result] = await db.execute(
-      'INSERT INTO posts (user_id, content, image, visibility) VALUES (?, ?, ?, ?)',
-      [user_id, content, image || null, visibility || 'public']
-    );
-    return result.insertId;
-  }
+const query = async (sql, params) => {
+  const [results] = await db.query(sql, params);
+  return results;
+};
 
-  static async getFeed(userId) {
-    const [rows] = await db.execute(`
+const Post = {
+  create: async ({ user_id, content, image, visibility = 'public' }) => {
+    const sql = `INSERT INTO posts (user_id, content, image, visibility) VALUES (?, ?, ?, ?)`;
+    return query(sql, [user_id, content, image ?? null, visibility]);
+  },
+
+  getById: async (id, userId = null) => {
+    const sql = `
       SELECT p.*, u.fullname, u.username, u.avatar,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) AS likes_count,
-        (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS comments_count,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) AS user_liked
+             (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count,
+             (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as user_liked
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.id = ?
+    `;
+    const rows = await query(sql, [userId, id]);
+    return rows[0] ?? null;
+  },
+
+  getByUser: async (user_id, requesterId = null) => {
+    const sql = `
+      SELECT p.*, u.fullname, u.username, u.avatar,
+             (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count,
+             (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as user_liked
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.user_id = ?
+      ORDER BY p.created_at DESC
+    `;
+    return query(sql, [requesterId, user_id]);
+  },
+
+  getFeed: async (userId) => {
+    const sql = `
+      SELECT p.*, u.fullname, u.username, u.avatar,
+             (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count,
+             (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as user_liked
       FROM posts p
       JOIN users u ON p.user_id = u.id
       WHERE p.visibility = 'public'
-        OR p.user_id = ?
-        OR p.user_id IN (
-          SELECT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END
-          FROM friend_requests WHERE status = 'accepted' AND (sender_id = ? OR receiver_id = ?)
-        )
+         OR p.user_id = ?
+         OR (p.visibility = 'friends' AND p.user_id IN (
+            SELECT receiver_id FROM friend_requests WHERE sender_id = ? AND status = 'accepted'
+            UNION
+            SELECT sender_id FROM friend_requests WHERE receiver_id = ? AND status = 'accepted'
+         ))
       ORDER BY p.created_at DESC
-      LIMIT 50
-    `, [userId, userId, userId, userId, userId]);
-    return rows;
-  }
+    `;
+    return query(sql, [userId, userId, userId, userId]);
+  },
 
-  static async getById(id) {
-    const [rows] = await db.execute(`
-      SELECT p.*, u.fullname, u.username, u.avatar,
-        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) AS likes_count
-      FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?
-    `, [id]);
-    return rows[0];
-  }
+  getAll: async () => {
+    const sql = `
+      SELECT p.*, u.username as author_name
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      ORDER BY p.created_at DESC
+    `;
+    return query(sql);
+  },
 
-  static async getByUser(userId) {
-    const [rows] = await db.execute(
-      'SELECT * FROM posts WHERE user_id = ? ORDER BY created_at DESC',
-      [userId]
-    );
-    return rows;
-  }
+  update: async (id, content) => {
+    return query(`UPDATE posts SET content = ? WHERE id = ?`, [content, id]);
+  },
 
-  static async update(id, content) {
-    await db.execute('UPDATE posts SET content = ? WHERE id = ?', [content, id]);
-  }
-
-  static async delete(id) {
-    await db.execute('DELETE FROM posts WHERE id = ?', [id]);
-  }
-
-  static async getAll() {
-    const [rows] = await db.execute(
-      'SELECT p.*, u.username FROM posts p JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC'
-    );
-    return rows;
-  }
-}
+  delete: async (id) => {
+    return query(`DELETE FROM posts WHERE id = ?`, [id]);
+  },
+};
 
 module.exports = Post;
